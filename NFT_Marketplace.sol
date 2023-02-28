@@ -1,86 +1,150 @@
-// SPDX-License-Identifier: GPL-3.0
-// Import necessary modules
-pragma solidity ^0.8.0;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.4;
+
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
-// Create a contract for the NFT platform
-contract NFTPlatform is ERC721 {
+contract MyToken is ERC721, ERC721Enumerable, Ownable {
     using Counters for Counters.Counter;
-    Counters.Counter private _tokenIds;
 
-    // Create a struct for paintings
-    struct Painting {
-        uint256 id;
-        address payable owner;
-        string name;
-        string artist;
-        string description;
-        uint256 price;
+    Counters.Counter private _tokenIdCounter;
+
+    constructor() ERC721("MyToken", "MTK") {}
+
+    uint256 public minRate=0 ether;
+    uint256 public MAX_SUPPLY=1000;
+
+    function _baseURI() internal pure override returns (string memory) {
+        return "https://gateway.pinata.cloud/ipfs/QmQzqoUXXSXUH5tDeJbp3RSGwQzrTzEBc626B9RT5Hynj5";
     }
 
-    // Create an array of paintings
-    Painting[] public paintings;
-
-    // Create a mapping of NFTs to paintings
-    mapping (uint256 => Painting) public nftToPainting;
-
-    // Create an event for when a new painting is listed
-    event PaintingListed(uint256 id, address owner, string name, uint256 price);
-
-    // Create a constructor for the NFT platform
-    constructor() ERC721("NFTPlatform", "NFTP") {}
-
-    // Create a function to list a new painting for sale
-    function listPainting(string memory _name, string memory _artist, string memory _description, uint256 _price) public returns (uint256) {
-        _tokenIds.increment();
-        uint256 newPaintingId = _tokenIds.current();
-
-        // Mint an NFT for the new painting
-        _mint(msg.sender, newPaintingId);
-
-        // Create a new painting and add it to the array
-        Painting memory newPainting = Painting(newPaintingId, payable(msg.sender), _name, _artist, _description, _price);
-        paintings.push(newPainting);
-
-        // Associate the new painting with the NFT
-        nftToPainting[newPaintingId] = newPainting;
-
-        // Emit an event for the new painting
-        emit PaintingListed(newPaintingId, msg.sender, _name, _price);
-
-        // Return the ID of the new painting
-        return newPaintingId;
+    function safeMint(address to) public payable {
+        require(totalSupply()<MAX_SUPPLY,"Can't mint more");
+        require(msg.value>=minRate,"Not enough ether sent");
+        uint256 tokenId = _tokenIdCounter.current();
+        _tokenIdCounter.increment();
+        _safeMint(to, tokenId);
     }
 
-    // Create a function for buying a painting
-    function buyPainting(uint256 _nftId) public payable {
-        Painting memory painting = nftToPainting[_nftId];
+    // The following functions are overrides required by Solidity.
 
-        // Require that the buyer sends the correct amount of ether
-        require(msg.value == painting.price, "Insufficient funds.");
-
-        // Transfer the ether to the seller
-        painting.owner.transfer(msg.value);
-
-        // Transfer the ownership of the NFT to the buyer
-        _transfer(painting.owner, msg.sender, _nftId);
-
-        // Update the owner of the painting
-        painting.owner = payable(msg.sender);
-
-        // Update the mapping of NFTs to paintings
-        nftToPainting[_nftId] = painting;
+    function _beforeTokenTransfer(address from, address to, uint256 tokenId, uint256 batchSize)
+        internal
+        override(ERC721, ERC721Enumerable)
+    {
+        super._beforeTokenTransfer(from, to, tokenId, batchSize);
     }
 
-    // Create a function to get all the paintings
-    function getAllPaintings() public view returns (Painting[] memory) {
-        return paintings;
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC721, ERC721Enumerable)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
     }
 
-    // Create a function to get the owner of an NFT
-    function getNftOwner(uint256 _nftId) public view returns (address) {
-        require(_nftId<paintings.length,"NFT Does Not Exist");
-        return ownerOf(_nftId);
+//     function withdraw() public onlyOwner{
+//         require(address(this).balance>0,"Balance is 0");
+//         payable(owner()).transfer(address(this).balance);
+//     }
+}
+
+
+contract Marketplace is ReentrancyGuard {
+
+    // Variables
+    address payable public immutable feeAccount; // the account that receives fees
+    uint public immutable feePercent; // the fee percentage on sales 
+    uint public itemCount; 
+
+    struct Item {
+        uint itemId;
+        IERC721 nft;
+        uint tokenId;
+        uint price;
+        address payable seller;
+        bool sold;
+    }
+
+    // itemId -> Item
+    mapping(uint => Item) public items;
+
+    event Offered(
+        uint itemId,
+        address indexed nft,
+        uint tokenId,
+        uint price,
+        address indexed seller
+    );
+    event Bought(
+        uint itemId,
+        address indexed nft,
+        uint tokenId,
+        uint price,
+        address indexed seller,
+        address indexed buyer
+    );
+
+    constructor(uint _feePercent) {
+        feeAccount = payable(msg.sender);
+        feePercent = _feePercent;
+    }
+
+    // Make item to offer on the marketplace
+    function makeItem(IERC721 _nft, uint _tokenId, uint _price) external nonReentrant {
+        require(_price > 0, "Price must be greater than zero");
+        // increment itemCount
+        itemCount ++;
+        // transfer nft
+        _nft.transferFrom(msg.sender, address(this), _tokenId);
+        // add new item to items mapping
+        items[itemCount] = Item (
+            itemCount,
+            _nft,
+            _tokenId,
+            _price,
+            payable(msg.sender),
+            false
+        );
+        // emit Offered event
+        emit Offered(
+            itemCount,
+            address(_nft),
+            _tokenId,
+            _price,
+            msg.sender
+        );
+    }
+
+    function purchaseItem(uint _itemId) external payable nonReentrant {
+        uint _totalPrice = getTotalPrice(_itemId);
+        Item storage item = items[_itemId];
+        require(_itemId > 0 && _itemId <= itemCount, "item doesn't exist");
+        require(msg.value >= _totalPrice, "not enough ether to cover item price and market fee");
+        require(!item.sold, "item already sold");
+        // pay seller and feeAccount
+        item.seller.transfer(item.price);
+        feeAccount.transfer(_totalPrice - item.price);
+        // update item to sold
+        item.sold = true;
+        // transfer nft to buyer
+        item.nft.transferFrom(address(this), msg.sender, item.tokenId);
+        // emit Bought event
+        emit Bought(
+            _itemId,
+            address(item.nft),
+            item.tokenId,
+            item.price,
+            item.seller,
+            msg.sender
+        );
+    }
+    function getTotalPrice(uint _itemId) view public returns(uint){
+        return((items[_itemId].price*(100 + feePercent))/100);
     }
 }
