@@ -55,7 +55,7 @@ contract MyToken is ERC721, ERC721Enumerable, Ownable {
 }
 
 
-contract Marketplace is ReentrancyGuard {
+contract Marketplace{
 
     // Variables
     address payable public immutable feeAccount; // the account that receives fees
@@ -96,7 +96,7 @@ contract Marketplace is ReentrancyGuard {
     }
 
     // Make item to offer on the marketplace
-    function makeItem(IERC721 _nft, uint _tokenId, uint _price) external nonReentrant {
+    function makeItem(IERC721 _nft, uint _tokenId, uint _price) external {
         require(_price > 0, "Price must be greater than zero");
         // increment itemCount
         itemCount ++;
@@ -121,7 +121,7 @@ contract Marketplace is ReentrancyGuard {
         );
     }
 
-    function purchaseItem(uint _itemId) external payable nonReentrant {
+    function purchaseItem(uint _itemId) external payable {
         uint _totalPrice = getTotalPrice(_itemId);
         Item storage item = items[_itemId];
         require(_itemId > 0 && _itemId <= itemCount, "item doesn't exist");
