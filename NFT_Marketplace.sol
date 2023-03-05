@@ -17,9 +17,9 @@ contract MyToken is ERC721, ERC721Enumerable, Ownable {
     uint256 public minRate=0 ether;
     uint256 public MAX_SUPPLY=1000;
 
-    function _baseURI() internal pure override returns (string memory) {
-        return "https://gateway.pinata.cloud/ipfs/QmQzqoUXXSXUH5tDeJbp3RSGwQzrTzEBc626B9RT5Hynj5";
-    }
+    //function _baseURI() internal pure override returns (string memory) {
+     //   return "https://gateway.pinata.cloud/ipfs/QmQzqoUXXSXUH5tDeJbp3RSGwQzrTzEBc626B9RT5Hynj5";
+    //}
 
     function safeMint(address to) public payable {
         require(totalSupply()<MAX_SUPPLY,"Can't mint more");
